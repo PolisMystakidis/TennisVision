@@ -1,11 +1,47 @@
 import cv2
 import numpy as np
 import glob
+import torch
 import os
-
+from TennisCourtDetector.tracknet import BallTrackerNet
+import torch.nn.functional as F
+from TennisCourtDetector.postprocess import postprocess, refine_kps
+from TennisCourtDetector.homography import get_trans_matrix, refer_kps
 OUTPUT_WIDTH = 640
 OUTPUT_HEIGHT = 360
+model_dir = "D:\\jupyter_server\\TennisVision\\model_tennis_court_det.pt"
+image_dir = "D:\\jupyter_server\\datasets\\data\\images"
+image_id = "-_5ljBK4HnI_200.png"
+out_path = "D:\\jupyter_server\\TennisVision\\outputs"
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print("Device : ",device)
+def detect_lines(image,use_refine_kps=True,use_homography=True):
+    inp = (image.astype(np.float32) / 255.)
+    inp = torch.tensor(np.rollaxis(inp, 2, 0))
+    inp = inp.unsqueeze(0)
 
+    model = BallTrackerNet(out_channels=15)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = model.to(device)
+    model.load_state_dict(torch.load(model_dir, map_location=device))
+    model.eval()
+
+    out = model(inp.float().to(device))[0]
+    pred = F.sigmoid(out).detach().cpu().numpy()
+    points = []
+    for kps_num in range(14):
+        heatmap = (pred[kps_num]*255).astype(np.uint8)
+        x_pred, y_pred = postprocess(heatmap, low_thresh=170, max_radius=25)
+        if use_refine_kps and kps_num not in [8, 12, 9] and x_pred and y_pred:
+            x_pred, y_pred = refine_kps(image, int(y_pred), int(x_pred))
+        points.append((x_pred, y_pred))
+
+    if use_homography:
+        matrix_trans = get_trans_matrix(points)
+        if matrix_trans is not None:
+            points = cv2.perspectiveTransform(refer_kps, matrix_trans)
+            points = [np.squeeze(x) for x in points]
+    return points
 def get_intersection(line1, line2):
     """Calculates the intersection of two lines given by (x1, y1, x2, y2)"""
     x1, y1, x2, y2 = line1
@@ -37,42 +73,14 @@ for video_path in video_files:
 
     while cap.isOpened():
         ret, frame = cap.read()
-        if not ret: break
-        top_down_frame = None
         frame = cv2.resize(frame, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 250, 255)
-        # edges = cv2.Canny(gray, 100, 250)
-        # Returns a list of lines [x1, y1, x2, y2]
-        kernel_sharpen = np.array([[0, 1, 0], [1, 4, 1], [0, 1, 0]])
-        sharpened = cv2.filter2D(frame, -1, kernel_sharpen*0.2)
-        hsv = cv2.cvtColor(sharpened, cv2.COLOR_BGR2HSV)
-        lower_white = np.array([0, 0, 210])  # High brightness
-        upper_white = np.array([180, 45, 255]) # Low saturation (no color)
-        mask = cv2.inRange(hsv, lower_white, upper_white)
-        edges = cv2.filter2D(mask,-1,kernel_sharpen*0.2)
-        height = frame.shape[0]
-        width = frame.shape[1]
-        line_length_var = 0.2
-        lines = cv2.HoughLinesP(mask, 1, np.pi/180, threshold=50, minLineLength=min(height,width)*line_length_var, maxLineGap=5)
-        if lines is not None:
-            # Separate lines into Horizontal and Vertical based on slope
-            horizontals = []
-            verticals = []
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                if abs(x2 - x1) > abs(y2 - y1): # More horizontal than vertical
-                    horizontals.append(line[0])
-                else:
-                    verticals.append(line[0])
-
-            # 3. Find Intersections (Corners)
-            last_point = None
-            for h in horizontals:
-                for v in verticals:
-                    point = get_intersection(h, v)
-                    cv2.circle(frame, point, 5, (0, 255, 0), -1)
-        cv2.imshow('Court Intersection Corners',frame)
+        if not ret: break
+        points = detect_lines(frame)
+        for j in range(len(points)):
+            if points[j][0] is not None:
+                image = cv2.circle(frame, (int(points[j][0]), int(points[j][1])),
+                                radius=0, color=(0, 0, 255), thickness=10)
+        cv2.imshow('Court Intersection Corners',image)
         if cv2.waitKey(30) & 0xFF == ord('q'):
             break
     cap.release()
