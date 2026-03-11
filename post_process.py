@@ -86,9 +86,9 @@ def merge_lines(lines):
     return new_lines       
 
 
-def postprocess_ball(feature_map, scale=1):
+def postprocess_ball(feature_map,height,width, scale=1):
     feature_map *= 255
-    feature_map = feature_map.reshape((360, 640))
+    feature_map = feature_map.reshape((height, width))
     feature_map = feature_map.astype(np.uint8)
     ret, heatmap = cv2.threshold(feature_map, 50, 255, cv2.THRESH_BINARY)
     circles = cv2.HoughCircles(heatmap, cv2.HOUGH_GRADIENT, dp=1, minDist=1, param1=50, param2=2, minRadius=2,

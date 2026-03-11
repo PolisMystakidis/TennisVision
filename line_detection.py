@@ -14,6 +14,7 @@ from scipy.spatial import distance
 
 OUTPUT_WIDTH = 640
 OUTPUT_HEIGHT = 360
+use_homography = True
 court_model_dir = "D:\\jupyter_server\\TennisVision\\model_tennis_court_det.pt"
 ball_model_dir = "D:\\jupyter_server\\TennisVision\\model_ball.pt"
 image_dir = "D:\\jupyter_server\\datasets\\data\\images"
@@ -73,8 +74,8 @@ def infer_model(frames, model,scaleH = None ,scaleW = None):
         ball_track: list of detected ball points
         dists: list of euclidean distances between two neighbouring ball points
     """
-    height = 360
-    width = 640
+    height = OUTPUT_HEIGHT
+    width = OUTPUT_WIDTH
     dists = [-1]*2
     ball_track = [(None,None)]*2
     for num in range(2, len(frames)):
@@ -87,7 +88,7 @@ def infer_model(frames, model,scaleH = None ,scaleW = None):
         inp = np.expand_dims(imgs, axis=0)
         out = model(torch.from_numpy(inp).float().to(device))
         output = out.argmax(dim=1).detach().cpu().numpy()
-        x_pred, y_pred = postprocess_ball(output)
+        x_pred, y_pred = postprocess_ball(output,OUTPUT_HEIGHT,OUTPUT_WIDTH)
         ball_track.append((x_pred, y_pred))
         if ball_track[-1][0] and ball_track[-2][0]:
             dist = distance.euclidean(ball_track[-1], ball_track[-2])
@@ -96,7 +97,7 @@ def infer_model(frames, model,scaleH = None ,scaleW = None):
         dists.append(dist)
     return ball_track, dists 
 
-def remove_outliers(ball_track, dists, max_dist = 100):
+def remove_outliers(ball_track, dists, max_dist = 10):
     """ Remove outliers from model prediction    
     :params
         ball_track: list of detected ball points
@@ -115,59 +116,71 @@ def remove_outliers(ball_track, dists, max_dist = 100):
                 ball_track[i-1] = (None, None)
     return ball_track  
 
-# 1. Setup the path to your folder
-video_folder = 'videos'
-# This grabs all mp4, avi, and mov files
-video_extensions = ['*.mp4', '*.avi', '*.mov', '*.gif']
-video_files = []
-for ext in video_extensions:
-    video_files.extend(glob.glob(os.path.join(video_folder, ext)))
-    
-for video_path in video_files:
-    gif_path = f'{video_path}'
-    cap = cv2.VideoCapture(gif_path)
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    last_3_frames = []
-    frame_id = 0
-    avrg_court_points = []
-    if not cap.isOpened():
-        print("Error: Could not open GIF.")
-        exit()
-    while cap.isOpened():
-        ret, frame = cap.read()
-        frame = cv2.resize(frame, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
-        if not ret: break
-        else:
+if __name__ == "__main__":
+    # 1. Setup the path to your folder
+    video_folder = 'videos'
+    # This grabs all mp4, avi, and mov files
+    video_extensions = ['*.mp4', '*.avi', '*.mov', '*.gif']
+    video_files = []
+    for ext in video_extensions:
+        video_files.extend(glob.glob(os.path.join(video_folder, ext)))
+        
+    for video_path in video_files:
+        gif_path = f'{video_path}'
+        cap = cv2.VideoCapture(gif_path)
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        last_3_frames = []
+        frame_id = 0
+        avrg_court_points = []
+        if not cap.isOpened():
+            print("Error: Could not open GIF.")
+            exit()
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
+            frame = cv2.resize(frame, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
             last_3_frames.append(frame)
             last_3_frames = last_3_frames[-3::]
-        #Ball Detection
-        ball_track , dist = infer_model(last_3_frames,ball_model)
-        ball_track = remove_outliers(ball_track, dist)
+            
+            #Ball Detection
+            ball_track , dist = infer_model(last_3_frames,ball_model)
+            ball_track = remove_outliers(ball_track, dist)
 
-        # Court Detection
-        # Detect line for first 5 frames then take avrg 
-        if len(avrg_court_points) < 5:
-            court_points = detect_lines(frame,model,use_refine_kps=True,use_homography=True)
+            # Court Detection
+            # Detect line for first 5 frames then take avrg 
+            if len(avrg_court_points) < 5:
+                court_points = detect_lines(frame,model,use_refine_kps=True,use_homography=False)
+                if (None,None) not in court_points:
+                    avrg_court_points.append(court_points)
+            elif len(avrg_court_points) >= 5:
+                court_points = np.asarray(avrg_court_points).sum(axis=0)/5
+                court_points = court_points.tolist()
+            #Homography
             if (None,None) not in court_points:
-                avrg_court_points.append(court_points)
-        elif len(avrg_court_points) >= 5:
-            court_points = np.asarray(avrg_court_points).sum(axis=0)/5
-            court_points = court_points.tolist()
+                if use_homography:
+                    refer_kps = np.float32([[100,100],[100,OUTPUT_HEIGHT-100],[OUTPUT_WIDTH-100,100],[OUTPUT_WIDTH-100,OUTPUT_HEIGHT-100]]).reshape(4,2)
+                    original_points = np.float32([court_points[4],court_points[5],court_points[6],court_points[7]]).reshape(4,2)
+                    matrix = cv2.getPerspectiveTransform(original_points,refer_kps)
+                    image = cv2.warpPerspective(image, matrix, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
+            
+            # Draw on image
+            image = frame
+            # image = np.zeros((frame.shape[0], frame.shape[1], 3), dtype = np.uint8)
+            if ball_track[-1][0] is not None and ball_track[-1][1] is not None:  
+                x_ball_pred , y_ball_pred = ball_track[-1]
+                image = cv2.circle(image, (int(x_ball_pred), int(y_ball_pred)),
+                                        radius=0, color=(255,0, 0), thickness=10)
+            for j in range(len(court_points)):
+                if court_points[j][0] is not None:
+                    image = cv2.circle(image, (int(court_points[j][0]), int(court_points[j][1])),
+                                radius=0, color=(0,255, 0), thickness=10)
+            
 
-        # Draw on image
-        image = frame
-        if ball_track[-1][0] is not None and ball_track[-1][1] is not None:  
-            x_ball_pred , y_ball_pred = ball_track[-1]
-            image = cv2.circle(image, (int(x_ball_pred), int(y_ball_pred)),
-                                    radius=0, color=(255,0, 0), thickness=10)
-        for j in range(len(court_points)):
-            if court_points[j][0] is not None:
-                image = cv2.circle(image, (int(court_points[j][0]), int(court_points[j][1])),
-                            radius=0, color=(0,255, 0), thickness=10)
 
-        cv2.imshow('Court Intersection Corners',image)
-        frame_id += 1
-        if cv2.waitKey(30) & 0xFF == ord('q'):
-            break
-    cap.release()
-    cv2.destroyAllWindows()
+
+            cv2.imshow('Court Intersection Corners',image)
+            frame_id += 1
+            if cv2.waitKey(30) & 0xFF == ord('q'):
+                break
+        cap.release()
+        cv2.destroyAllWindows()
