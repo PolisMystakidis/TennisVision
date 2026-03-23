@@ -127,6 +127,7 @@ if __name__ == "__main__":
         
     for video_path in video_files:
         gif_path = f'{video_path}'
+        # gif_path = 0
         cap = cv2.VideoCapture(gif_path)
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         last_3_frames = []
@@ -141,10 +142,6 @@ if __name__ == "__main__":
             frame = cv2.resize(frame, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
             last_3_frames.append(frame)
             last_3_frames = last_3_frames[-3::]
-            
-            #Ball Detection
-            ball_track , dist = infer_model(last_3_frames,ball_model)
-            ball_track = remove_outliers(ball_track, dist)
 
             # Court Detection
             # Detect line for first 5 frames then take avrg 
@@ -155,6 +152,12 @@ if __name__ == "__main__":
             elif len(avrg_court_points) >= 5:
                 court_points = np.asarray(avrg_court_points).sum(axis=0)/5
                 court_points = court_points.tolist()
+            #Ball Detection
+            last_3_frames = last_3_frames[-3::]
+            ball_track , dist = infer_model(last_3_frames,ball_model)
+            ball_track = remove_outliers(ball_track, dist)
+
+            
             #Homography
             if (None,None) not in court_points:
                 if use_homography:
@@ -162,7 +165,7 @@ if __name__ == "__main__":
                     original_points = np.float32([court_points[4],court_points[5],court_points[6],court_points[7]]).reshape(4,2)
                     matrix = cv2.getPerspectiveTransform(original_points,refer_kps)
                     image = cv2.warpPerspective(image, matrix, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
-            
+
             # Draw on image
             image = frame
             # image = np.zeros((frame.shape[0], frame.shape[1], 3), dtype = np.uint8)
@@ -174,6 +177,9 @@ if __name__ == "__main__":
                 if court_points[j][0] is not None:
                     image = cv2.circle(image, (int(court_points[j][0]), int(court_points[j][1])),
                                 radius=0, color=(0,255, 0), thickness=10)
+            # if (None,None) not in court_points:
+            #     if use_homography:
+            #         image = cv2.warpPerspective(image, matrix, (OUTPUT_WIDTH, OUTPUT_HEIGHT))
             
 
 

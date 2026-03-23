@@ -4,19 +4,20 @@ from line_detection import infer_model,remove_outliers,ball_model,OUTPUT_HEIGHT,
 
 prevCicle = None
 dist = lambda x1,y1,x2,y2: (x1-x2)*(x1-x2) + (y1-y2)*(y1-y2)
-GREEN_RANGE = ((20, 70, 0), (50, 255, 255))
-# GREEN_RANGE = ((8, 150, 110), (145, 255, 255))
+GREEN_RANGE = ((30, 85, 10), (65, 255, 200)) # this is for HSV recommended
+# GREEN_RANGE = ((8, 150, 110), (145, 255, 255)) # this is for RGB not recomended
 def ballTrackHough(image):
     global prevCicle , dist
     kernel = np.ones((5, 5), np.uint8)
     colorLower, colorUpper = GREEN_RANGE
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     grayFrame = cv2.inRange(hsv, colorLower, colorUpper)
-    grayFrame = cv2.morphologyEx(grayFrame, cv2.MORPH_CLOSE, kernel)
+    # grayFrame = cv2.morphologyEx(grayFrame, cv2.MORPH_CLOSE, kernel)
     # grayFrame = cv2.cvtColor(image_masked,cv2.COLOR_BGR2GRAY)
-    blurFrame = cv2.GaussianBlur(grayFrame,(9,9),2)
-    circles = cv2.HoughCircles(blurFrame , cv2.HOUGH_GRADIENT , 1 , 50,
-                              minRadius = 2 , maxRadius = 1000)
+    # grayFrame = cv2.GaussianBlur(grayFrame,(9,9),2)
+    circles = cv2.HoughCircles(grayFrame , cv2.HOUGH_GRADIENT , 1 , 500, param1 = 200 , param2 = 25,
+                              minRadius = 5 , maxRadius = 100)
+    print(circles)
     chosen = None
     if circles is not None:
         circles = np.uint16(np.around(circles))
@@ -28,6 +29,7 @@ def ballTrackHough(image):
                     chosen = x
     return chosen , grayFrame
 cam = cv2.VideoCapture(0)
+cam = cv2.VideoCapture("videos\\1video_infer copy.gif")
 last_3_frames = []
 while True:
     ret, frame = cam.read()

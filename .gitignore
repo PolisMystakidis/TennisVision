@@ -1,3 +1,11 @@
 *.jpg
+*.txt
 TrackNet-main\Dataset\
-videos\
+videos\YOLOData\test\images\
+videos\YOLOData\test\labels\
+videos\YOLOData\train\images\
+videos\YOLOData\valid\labels\
+videos\YOLOData\valid\labels\
+videos\YOLOData\data.yaml
+
+

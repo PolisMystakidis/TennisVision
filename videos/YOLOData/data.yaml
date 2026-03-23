@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['tennis-ball']
+
+roboflow:
+  workspace: ugur-ozdemir
+  project: tennis-ball-wafqb
+  version: 2
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/ugur-ozdemir/tennis-ball-wafqb/dataset/2
