@@ -6,6 +6,14 @@ videos\YOLOData\test\labels\
 videos\YOLOData\train\images\
 videos\YOLOData\valid\labels\
 videos\YOLOData\valid\labels\
+videos\YOLOData\train\np_images.npy
+videos\YOLOData\train\np_labels.npy
+videos\YOLOData\valid\np_images.npy
+videos\YOLOData\valid\np_labels.npy
+videos\YOLOData\test\np_images.npy
+videos\YOLOData\test\np_labels.npy
 videos\YOLOData\data.yaml
+runs/
+videos/
 
 
